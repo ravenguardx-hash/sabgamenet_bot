@@ -65,7 +65,7 @@ RAVENGUARD_ACCOUNT_ID = 498590584
 
 # =========================================================
 
-web_app = Flask(**name**)
+web_app = Flask(__name__)
 
 @web_app.route("/")
 def home():
