@@ -10,12 +10,13 @@ from html import escape, unescape
 
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-RAVENGUARD_ACCOUNT_ID = "997181168"
+RAVENGUARD_ACCOUNT_ID = "498590584"
+ARMIN_ACCOUNT_ID = "1524674878"
 
 MEET_ARMIN = "https://meet.google.com/gto-izfj-hmj"
 MEET_ALI = "https://meet.google.com/wba-iyzm-hdu"
@@ -303,6 +304,12 @@ def get_main_keyboard():
                 "🎮 نتایج اخیر RavenGuard",
                 callback_data="raven_results"
             )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎮 نتایج اخیر آرمین",
+                callback_data="armin_results"
+            )
         ]
     ]
 
@@ -461,10 +468,10 @@ def get_hero_map():
     return result
 
 
-def get_recent_matches():
+def get_recent_matches(account_id):
     url = (
         "https://api.opendota.com/api/players/"
-        + RAVENGUARD_ACCOUNT_ID
+        + str(account_id)
         + "/recentMatches"
     )
 
@@ -474,10 +481,10 @@ def get_recent_matches():
     )
 
 
-def request_raven_refresh():
+def request_player_refresh(account_id):
     url = (
         "https://api.opendota.com/api/players/"
-        + RAVENGUARD_ACCOUNT_ID
+        + str(account_id)
         + "/refresh"
     )
 
@@ -501,7 +508,7 @@ def request_raven_refresh():
 
     except Exception as error:
         print(
-            "RavenGuard refresh error:",
+            "Player refresh error:",
             error
         )
 
@@ -700,9 +707,15 @@ def build_match_text(match, hero_map):
     return text
 
 
-async def handle_raven_results(query):
+async def show_player_results(
+    query,
+    account_id,
+    player_name
+):
     loading = await query.message.reply_text(
-        "🎮 <b>در حال گرفتن ۵ بازی اخیر RavenGuard...</b>\n"
+        "🎮 <b>در حال گرفتن ۵ بازی اخیر "
+        + escape(player_name)
+        + "...</b>\n"
         "⏳ یک لحظه صبر کن...",
         parse_mode="HTML"
     )
@@ -713,18 +726,22 @@ async def handle_raven_results(query):
         )
 
         matches = await asyncio.to_thread(
-            get_recent_matches
+            get_recent_matches,
+            account_id
         )
 
         if not matches:
             await loading.edit_text(
-                "🔄 بازی‌های RavenGuard هنوز در OpenDota پیدا نشد.\n"
+                "🔄 بازی‌های اخیر "
+                + escape(player_name)
+                + " هنوز در OpenDota پیدا نشد.\n"
                 "⏳ دارم اطلاعات پروفایل را Refresh می‌کنم...",
                 parse_mode="HTML"
             )
 
             await asyncio.to_thread(
-                request_raven_refresh
+                request_player_refresh,
+                account_id
             )
 
             await asyncio.sleep(
@@ -732,21 +749,26 @@ async def handle_raven_results(query):
             )
 
             matches = await asyncio.to_thread(
-                get_recent_matches
+                get_recent_matches,
+                account_id
             )
 
         if not matches:
             await loading.edit_text(
-                "❌ هنوز بازی‌های اخیر RavenGuard پیدا نشد.\n\n"
-                "OpenDota هنوز اطلاعات این اکانت را ندارد.\n"
-                "چند دقیقه بعد دوباره روی همین دکمه بزن.",
+                "❌ هنوز بازی‌های اخیر "
+                + escape(player_name)
+                + " پیدا نشد.\n\n"
+                "ممکنه OpenDota هنوز اطلاعات این اکانت را دریافت نکرده باشد.\n"
+                "چند دقیقه بعد دوباره امتحان کن.",
                 parse_mode="HTML"
             )
 
             return
 
         await loading.edit_text(
-            "🎮 <b>۵ بازی اخیر RavenGuard</b>\n\n"
+            "🎮 <b>۵ بازی اخیر "
+            + escape(player_name)
+            + "</b>\n\n"
             "━━━━━━━━━━━━━━━━━━━━",
             parse_mode="HTML"
         )
@@ -772,7 +794,8 @@ async def handle_raven_results(query):
 
             except Exception as error:
                 print(
-                    "RavenGuard match error:",
+                    player_name,
+                    "match error:",
                     error
                 )
 
@@ -786,16 +809,35 @@ async def handle_raven_results(query):
 
     except Exception as error:
         print(
-            "RavenGuard error:",
+            player_name,
+            "results error:",
             error
         )
 
         await loading.edit_text(
-            "❌ خطا هنگام دریافت بازی‌های RavenGuard.\n\n"
+            "❌ خطا هنگام دریافت بازی‌های "
+            + escape(player_name)
+            + ".\n\n"
             "خطا:\n"
             + escape(str(error)),
             parse_mode="HTML"
         )
+
+
+async def handle_raven_results(query):
+    await show_player_results(
+        query,
+        RAVENGUARD_ACCOUNT_ID,
+        "RavenGuard"
+    )
+
+
+async def handle_armin_results(query):
+    await show_player_results(
+        query,
+        ARMIN_ACCOUNT_ID,
+        "آرمین"
+    )
 
 
 def get_latest_gameplay_patch():
@@ -1094,44 +1136,31 @@ async def button_handler(
     remember_user(update)
 
     if query.data == "turbo":
-        await handle_turbo(
-            query
-        )
+        await handle_turbo(query)
 
     elif query.data == "ranked":
-        await handle_ranked(
-            query
-        )
+        await handle_ranked(query)
 
     elif query.data == "everyone":
-        await handle_everyone(
-            query
-        )
+        await handle_everyone(query)
 
     elif query.data == "spectator":
-        await handle_spectator(
-            query
-        )
+        await handle_spectator(query)
 
     elif query.data == "armin_call":
-        await handle_armin_call(
-            query
-        )
+        await handle_armin_call(query)
 
     elif query.data == "ali_call":
-        await handle_ali_call(
-            query
-        )
+        await handle_ali_call(query)
 
     elif query.data == "dota_update":
-        await handle_dota_update(
-            query
-        )
+        await handle_dota_update(query)
 
     elif query.data == "raven_results":
-        await handle_raven_results(
-            query
-        )
+        await handle_raven_results(query)
+
+    elif query.data == "armin_results":
+        await handle_armin_results(query)
 
 
 web_app = Flask(
