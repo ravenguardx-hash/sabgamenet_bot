@@ -5,6 +5,7 @@ import asyncio
 import threading
 import urllib.request
 import urllib.parse
+import datetime
 from html import escape, unescape
 
 from flask import Flask
@@ -84,16 +85,25 @@ def mention_user(username):
     user_id = USERS.get(username)
 
     if user_id:
-        return '<a href="tg://user?id=' + str(user_id) + '">' + escape(username) + "</a>"
+        return (
+            '<a href="tg://user?id='
+            + str(user_id)
+            + '">'
+            + escape(username)
+            + "</a>"
+        )
 
     return "@" + escape(username)
 
 
 def make_mentions(user_list):
-    return " ".join(mention_user(name) for name in user_list)
+    return " ".join(
+        mention_user(name)
+        for name in user_list
+    )
 
 
-def http_get(url, timeout=15):
+def http_get(url, timeout=20):
     request = urllib.request.Request(
         url,
         headers={
@@ -101,28 +111,48 @@ def http_get(url, timeout=15):
         }
     )
 
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="ignore")
+    with urllib.request.urlopen(
+        request,
+        timeout=timeout
+    ) as response:
+        return response.read().decode(
+            "utf-8",
+            errors="ignore"
+        )
 
 
-def get_json(url, timeout=15):
-    data = http_get(url, timeout)
+def get_json(url, timeout=20):
+    data = http_get(
+        url,
+        timeout
+    )
+
     return json.loads(data)
 
 
 def format_duration(seconds):
     try:
         seconds = int(seconds)
+
         minutes = seconds // 60
         remaining = seconds % 60
-        return str(minutes) + ":" + str(remaining).zfill(2)
+
+        return (
+            str(minutes)
+            + ":"
+            + str(remaining).zfill(2)
+        )
+
     except Exception:
         return "-"
 
 
 def format_number(number):
     try:
-        return "{:,}".format(int(number))
+        return "{:,}".format(
+            int(number)
+        )
+
     except Exception:
         return "-"
 
@@ -163,8 +193,17 @@ def html_to_text(value):
 
     value = unescape(value)
 
-    value = re.sub(r"[ \t]+", " ", value)
-    value = re.sub(r"\n\s*\n+", "\n", value)
+    value = re.sub(
+        r"[ \t]+",
+        " ",
+        value
+    )
+
+    value = re.sub(
+        r"\n\s*\n+",
+        "\n",
+        value
+    )
 
     return value.strip()
 
@@ -174,28 +213,46 @@ def translate_to_persian(text):
         return ""
 
     try:
-        query = urllib.parse.quote(text[:1800])
+        query = urllib.parse.quote(
+            text[:1800]
+        )
 
         url = (
-            "https://translate.googleapis.com/translate_a/single"
+            "https://translate.googleapis.com/"
+            "translate_a/single"
             "?client=gtx"
             "&sl=en"
             "&tl=fa"
             "&dt=t"
-            "&q=" + query
+            "&q="
+            + query
         )
 
-        data = get_json(url, 15)
+        data = get_json(
+            url,
+            15
+        )
 
         result = ""
 
-        if isinstance(data, list) and len(data) > 0:
+        if (
+            isinstance(data, list)
+            and len(data) > 0
+        ):
             translations = data[0]
 
-            if isinstance(translations, list):
+            if isinstance(
+                translations,
+                list
+            ):
                 for item in translations:
-                    if isinstance(item, list) and len(item) > 0:
-                        result += str(item[0])
+                    if (
+                        isinstance(item, list)
+                        and len(item) > 0
+                    ):
+                        result += str(
+                            item[0]
+                        )
 
         return result.strip()
 
@@ -249,10 +306,12 @@ def get_main_keyboard():
         ]
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     remember_user(update)
 
     text = (
@@ -268,7 +327,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def menu_command(update, context):
     remember_user(update)
 
     text = (
@@ -356,7 +415,9 @@ async def handle_armin_call(query):
         "🔴 <b>کال آرمین سرندی</b>\n\n"
         "برای ورود روی دکمه زیر بزن:",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
@@ -374,14 +435,16 @@ async def handle_ali_call(query):
         "🔵 <b>کال علی احدی</b>\n\n"
         "برای ورود روی دکمه زیر بزن:",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
 def get_hero_map():
     heroes = get_json(
         "https://api.opendota.com/api/heroStats",
-        15
+        20
     )
 
     result = {}
@@ -402,45 +465,88 @@ def get_recent_matches():
     url = (
         "https://api.opendota.com/api/players/"
         + RAVENGUARD_ACCOUNT_ID
-        + "/matches?limit=5"
+        + "/recentMatches"
     )
 
-    return get_json(url, 20)
+    return get_json(
+        url,
+        30
+    )
 
 
-def get_match_details(match_id):
+def request_raven_refresh():
     url = (
-        "https://api.opendota.com/api/matches/"
-        + str(match_id)
+        "https://api.opendota.com/api/players/"
+        + RAVENGUARD_ACCOUNT_ID
+        + "/refresh"
     )
 
-    return get_json(url, 20)
+    try:
+        request = urllib.request.Request(
+            url,
+            method="POST",
+            headers={
+                "User-Agent": "SahebGimnet/1.0"
+            }
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=30
+        ) as response:
+            return response.read().decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+    except Exception as error:
+        print(
+            "RavenGuard refresh error:",
+            error
+        )
+
+        return None
 
 
 def build_match_text(match, hero_map):
-    match_id = match.get("match_id")
+    match_id = match.get(
+        "match_id"
+    )
 
-    player_slot = match.get("player_slot", 0)
+    player_slot = match.get(
+        "player_slot",
+        0
+    )
 
     radiant = player_slot < 128
 
-    radiant_win = match.get("radiant_win")
+    radiant_win = match.get(
+        "radiant_win"
+    )
 
     if radiant_win is None:
         result_text = "❔ نتیجه نامشخص"
+
     elif radiant_win == radiant:
         result_text = "🟢 برد"
+
     else:
         result_text = "🔴 باخت"
 
-    hero_id = match.get("hero_id")
+    hero_id = match.get(
+        "hero_id"
+    )
 
-    hero_name = hero_map.get(
-        int(hero_id),
-        "نامشخص"
-    ) if hero_id else "نامشخص"
+    hero_name = "نامشخص"
 
-    game_mode_id = match.get("game_mode")
+    if hero_id:
+        try:
+            hero_name = hero_map.get(
+                int(hero_id),
+                "نامشخص"
+            )
+        except Exception:
+            hero_name = "نامشخص"
 
     modes = {
         1: "All Pick",
@@ -474,22 +580,25 @@ def build_match_text(match, hero_map):
     }
 
     game_mode = modes.get(
-        game_mode_id,
+        match.get("game_mode"),
         "Unknown"
     )
 
     duration = format_duration(
-        match.get("duration", 0)
+        match.get(
+            "duration",
+            0
+        )
     )
-
-    start_time = match.get("start_time")
 
     date_text = "نامشخص"
 
+    start_time = match.get(
+        "start_time"
+    )
+
     if start_time:
         try:
-            import datetime
-
             date_value = datetime.datetime.fromtimestamp(
                 int(start_time)
             )
@@ -501,34 +610,83 @@ def build_match_text(match, hero_map):
         except Exception:
             pass
 
-    kills = match.get("kills", 0)
-    deaths = match.get("deaths", 0)
-    assists = match.get("assists", 0)
+    kills = match.get(
+        "kills",
+        0
+    )
 
-    gpm = match.get("gold_per_min", 0)
-    xpm = match.get("xp_per_min", 0)
-    last_hits = match.get("last_hits", 0)
-    hero_damage = match.get("hero_damage", 0)
-    tower_damage = match.get("tower_damage", 0)
+    deaths = match.get(
+        "deaths",
+        0
+    )
+
+    assists = match.get(
+        "assists",
+        0
+    )
+
+    gpm = match.get(
+        "gold_per_min",
+        0
+    )
+
+    xpm = match.get(
+        "xp_per_min",
+        0
+    )
+
+    last_hits = match.get(
+        "last_hits",
+        0
+    )
+
+    hero_damage = match.get(
+        "hero_damage",
+        0
+    )
+
+    tower_damage = match.get(
+        "tower_damage",
+        0
+    )
 
     text = (
-        "<b>" + escape(result_text) + "</b>\n"
-        "🦸 Hero: <b>" + escape(str(hero_name)) + "</b>\n"
-        "🎮 Mode: " + escape(str(game_mode)) + "\n"
-        "⏱ Duration: " + escape(str(duration)) + "\n"
-        "📅 Date: " + escape(str(date_text)) + "\n\n"
-        "⚔️ K/D/A: "
-        + escape(str(kills))
-        + "/"
-        + escape(str(deaths))
-        + "/"
-        + escape(str(assists))
+        "<b>"
+        + escape(result_text)
+        + "</b>\n"
+        "🦸 Hero: <b>"
+        + escape(str(hero_name))
+        + "</b>\n"
+        "🎮 Mode: "
+        + escape(str(game_mode))
         + "\n"
-        "💰 GPM: " + format_number(gpm) + "\n"
-        "⭐ XPM: " + format_number(xpm) + "\n"
-        "🎯 Last Hits: " + format_number(last_hits) + "\n"
-        "💥 Hero Damage: " + format_number(hero_damage) + "\n"
-        "🏰 Tower Damage: " + format_number(tower_damage)
+        "⏱ Duration: "
+        + escape(str(duration))
+        + "\n"
+        "📅 Date: "
+        + escape(str(date_text))
+        + "\n\n"
+        "⚔️ K/D/A: "
+        + str(kills)
+        + "/"
+        + str(deaths)
+        + "/"
+        + str(assists)
+        + "\n"
+        "💰 GPM: "
+        + format_number(gpm)
+        + "\n"
+        "⭐ XPM: "
+        + format_number(xpm)
+        + "\n"
+        "🎯 Last Hits: "
+        + format_number(last_hits)
+        + "\n"
+        "💥 Hero Damage: "
+        + format_number(hero_damage)
+        + "\n"
+        "🏰 Tower Damage: "
+        + format_number(tower_damage)
     )
 
     if match_id:
@@ -543,7 +701,7 @@ def build_match_text(match, hero_map):
 
 
 async def handle_raven_results(query):
-    await query.message.reply_text(
+    loading = await query.message.reply_text(
         "🎮 <b>در حال گرفتن ۵ بازی اخیر RavenGuard...</b>\n"
         "⏳ یک لحظه صبر کن...",
         parse_mode="HTML"
@@ -559,20 +717,44 @@ async def handle_raven_results(query):
         )
 
         if not matches:
-            await query.message.reply_text(
-                "❌ اطلاعاتی از بازی‌های اخیر RavenGuard پیدا نشد.\n\n"
-                "ممکنه اطلاعات بازی‌ها هنوز توسط OpenDota دریافت نشده باشه یا Match History عمومی نباشه.",
+            await loading.edit_text(
+                "🔄 بازی‌های RavenGuard هنوز در OpenDota پیدا نشد.\n"
+                "⏳ دارم اطلاعات پروفایل را Refresh می‌کنم...",
                 parse_mode="HTML"
             )
+
+            await asyncio.to_thread(
+                request_raven_refresh
+            )
+
+            await asyncio.sleep(
+                7
+            )
+
+            matches = await asyncio.to_thread(
+                get_recent_matches
+            )
+
+        if not matches:
+            await loading.edit_text(
+                "❌ هنوز بازی‌های اخیر RavenGuard پیدا نشد.\n\n"
+                "OpenDota هنوز اطلاعات این اکانت را ندارد.\n"
+                "چند دقیقه بعد دوباره روی همین دکمه بزن.",
+                parse_mode="HTML"
+            )
+
             return
 
-        await query.message.reply_text(
+        await loading.edit_text(
             "🎮 <b>۵ بازی اخیر RavenGuard</b>\n\n"
             "━━━━━━━━━━━━━━━━━━━━",
             parse_mode="HTML"
         )
 
-        for index, match in enumerate(matches[:5], 1):
+        for index, match in enumerate(
+            matches[:5],
+            1
+        ):
             try:
                 text = build_match_text(
                     match,
@@ -580,24 +762,37 @@ async def handle_raven_results(query):
                 )
 
                 await query.message.reply_text(
-                    "🎮 <b>Match #" + str(index) + "</b>\n\n" + text,
+                    "🎮 <b>Match #"
+                    + str(index)
+                    + "</b>\n\n"
+                    + text,
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
 
-            except Exception as match_error:
+            except Exception as error:
+                print(
+                    "RavenGuard match error:",
+                    error
+                )
+
                 await query.message.reply_text(
                     "⚠️ خطا در نمایش Match #"
                     + str(index)
                     + "\n"
-                    + escape(str(match_error))
+                    + escape(str(error)),
+                    parse_mode="HTML"
                 )
 
     except Exception as error:
-        await query.message.reply_text(
-            "❌ <b>خطا در دریافت نتایج RavenGuard</b>\n\n"
-            "ممکنه OpenDota موقتاً در دسترس نباشه.\n\n"
-            "خطا: "
+        print(
+            "RavenGuard error:",
+            error
+        )
+
+        await loading.edit_text(
+            "❌ خطا هنگام دریافت بازی‌های RavenGuard.\n\n"
+            "خطا:\n"
             + escape(str(error)),
             parse_mode="HTML"
         )
@@ -605,25 +800,38 @@ async def handle_raven_results(query):
 
 def get_latest_gameplay_patch():
     url = (
-        "https://api.steampowered.com/ISteamNews/"
-        "GetNewsForApp/v0002/"
+        "https://api.steampowered.com/"
+        "ISteamNews/GetNewsForApp/v0002/"
         "?appid=570"
         "&count=30"
         "&maxlength=100000"
         "&format=json"
     )
 
-    data = get_json(url, 20)
+    data = get_json(
+        url,
+        20
+    )
 
     items = (
-        data.get("appnews", {})
-        .get("newsitems", [])
+        data.get(
+            "appnews",
+            {}
+        ).get(
+            "newsitems",
+            []
+        )
     )
 
     patch_item = None
 
     for item in items:
-        title = str(item.get("title", ""))
+        title = str(
+            item.get(
+                "title",
+                ""
+            )
+        )
 
         if "Gameplay Update" in title:
             patch_item = item
@@ -649,14 +857,9 @@ def get_latest_gameplay_patch():
         ""
     )
 
-    url = patch_item.get(
+    official_url = patch_item.get(
         "url",
         ""
-    )
-
-    date_value = patch_item.get(
-        "date",
-        0
     )
 
     version = ""
@@ -672,14 +875,15 @@ def get_latest_gameplay_patch():
     return {
         "title": title,
         "contents": contents,
-        "url": url,
-        "version": version,
-        "date": date_value
+        "url": official_url,
+        "version": version
     }
 
 
 def extract_patch_changes(contents):
-    clean = html_to_text(contents)
+    clean = html_to_text(
+        contents
+    )
 
     lines = [
         line.strip()
@@ -710,8 +914,7 @@ def extract_patch_changes(contents):
         "tower",
         "roshan",
         "facet",
-        "innate",
-        "neutral item"
+        "innate"
     ]
 
     for line in lines:
@@ -720,14 +923,16 @@ def extract_patch_changes(contents):
         if len(line) < 20:
             continue
 
-        if any(word in lower for word in keywords):
+        if any(
+            word in lower
+            for word in keywords
+        ):
             useful.append(line)
 
     if not useful:
         useful = lines
 
     result = []
-
     seen = set()
 
     for line in useful:
@@ -766,6 +971,7 @@ async def handle_dota_update(query):
                 "❌ آخرین آپدیت Dota 2 پیدا نشد.",
                 parse_mode="HTML"
             )
+
             return
 
         title = patch.get(
@@ -806,11 +1012,15 @@ async def handle_dota_update(query):
                 + "</b>"
             )
 
-        text += "\n\n"
+        text += (
+            "\n\n"
+            "🔥 <b>تغییرات مهم:</b>\n\n"
+        )
 
-        text += "🔥 <b>تغییرات مهم:</b>\n\n"
-
-        for index, change in enumerate(changes, 1):
+        for index, change in enumerate(
+            changes,
+            1
+        ):
             translated = await asyncio.to_thread(
                 translate_to_persian,
                 change
@@ -830,7 +1040,9 @@ async def handle_dota_update(query):
             if len(text) > 3800:
                 break
 
-        official_url = patch.get("url")
+        official_url = patch.get(
+            "url"
+        )
 
         keyboard = []
 
@@ -848,7 +1060,9 @@ async def handle_dota_update(query):
             text,
             parse_mode="HTML",
             reply_markup=(
-                InlineKeyboardMarkup(keyboard)
+                InlineKeyboardMarkup(
+                    keyboard
+                )
                 if keyboard
                 else None
             ),
@@ -856,6 +1070,11 @@ async def handle_dota_update(query):
         )
 
     except Exception as error:
+        print(
+            "Dota update error:",
+            error
+        )
+
         await loading.edit_text(
             "❌ <b>در دریافت آپدیت Dota 2 خطایی رخ داد.</b>\n\n"
             "خطا:\n"
@@ -864,7 +1083,10 @@ async def handle_dota_update(query):
         )
 
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(
+    update,
+    context
+):
     query = update.callback_query
 
     await query.answer()
@@ -872,31 +1094,49 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remember_user(update)
 
     if query.data == "turbo":
-        await handle_turbo(query)
+        await handle_turbo(
+            query
+        )
 
     elif query.data == "ranked":
-        await handle_ranked(query)
+        await handle_ranked(
+            query
+        )
 
     elif query.data == "everyone":
-        await handle_everyone(query)
+        await handle_everyone(
+            query
+        )
 
     elif query.data == "spectator":
-        await handle_spectator(query)
+        await handle_spectator(
+            query
+        )
 
     elif query.data == "armin_call":
-        await handle_armin_call(query)
+        await handle_armin_call(
+            query
+        )
 
     elif query.data == "ali_call":
-        await handle_ali_call(query)
+        await handle_ali_call(
+            query
+        )
 
     elif query.data == "dota_update":
-        await handle_dota_update(query)
+        await handle_dota_update(
+            query
+        )
 
     elif query.data == "raven_results":
-        await handle_raven_results(query)
+        await handle_raven_results(
+            query
+        )
 
 
-web_app = Flask("saheb_gimnet")
+web_app = Flask(
+    "saheb_gimnet"
+)
 
 
 @web_app.route("/")
@@ -924,12 +1164,17 @@ def run_web_server():
 
 
 async def post_init(application):
-    print("Saheb Gimnet bot started successfully.")
+    print(
+        "Saheb Gimnet bot started successfully."
+    )
 
 
 def main():
     if not BOT_TOKEN:
-        print("ERROR: BOT_TOKEN is not set.")
+        print(
+            "ERROR: BOT_TOKEN is not set."
+        )
+
         return
 
     web_thread = threading.Thread(
@@ -947,18 +1192,28 @@ def main():
     )
 
     application.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
     application.add_handler(
-        CommandHandler("menu", menu_command)
+        CommandHandler(
+            "menu",
+            menu_command
+        )
     )
 
     application.add_handler(
-        CallbackQueryHandler(button_handler)
+        CallbackQueryHandler(
+            button_handler
+        )
     )
 
-    print("Bot is starting...")
+    print(
+        "Bot is starting..."
+    )
 
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
