@@ -69,33 +69,44 @@ def make_mentions(usernames):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🎮 دوتا ۲ (توربو)",
-                callback_data="turbo"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎮 دوتا ۲ (رنک)",
-                callback_data="rank"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📢 همرو صدا کن",
-                callback_data="everyone"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👀 تماشاچی میخوام",
-                callback_data="spectator"
-            )
-        ],
-    ]
-
+keyboard = [
+    [
+        InlineKeyboardButton(
+            "🎮 دوتا ۲ (توربو)",
+            callback_data="turbo"
+        )
+    ],
+    [
+        InlineKeyboardButton(
+            "🎮 دوتا ۲ (رنک)",
+            callback_data="rank"
+        )
+    ],
+    [
+        InlineKeyboardButton(
+            "📢 همرو صدا کن",
+            callback_data="everyone"
+        )
+    ],
+    [
+        InlineKeyboardButton(
+            "👀 تماشاچی میخوام",
+            callback_data="spectator"
+        )
+    ],
+    [
+        InlineKeyboardButton(
+            "🔴 لینک کال آرمین سرندی",
+            url="https://meet.google.com/gto-izfj-hmj"
+        )
+    ],
+    [
+        InlineKeyboardButton(
+            "🔵 لینک کال علی احدی",
+            url="https://meet.google.com/wba-iyzm-hdu"
+        )
+    ],
+]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
