@@ -14,6 +14,7 @@ from telegram.ext import (
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
+# شناسه کاربران
 USERS = {
     "AlieAhadi": None,
     "Arminsarandii": None,
@@ -25,6 +26,11 @@ USERS = {
     "alimakkiiii": None,
     "Ahmad_b78": None,
 }
+
+
+# =========================
+# Flask برای Render
+# =========================
 
 web_app = Flask(__name__)
 
@@ -38,6 +44,10 @@ def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
 
+
+# =========================
+# ثبت کاربران
+# =========================
 
 async def save_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -54,6 +64,10 @@ async def save_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"Registered @{wanted}: {user.id}")
 
 
+# =========================
+# ساخت منشن واقعی
+# =========================
+
 def mention(username):
     user_id = USERS.get(username)
 
@@ -67,46 +81,51 @@ def make_mentions(usernames):
     return "\n".join(mention(username) for username in usernames)
 
 
+# =========================
+# منوی اصلی
+# =========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-keyboard = [
-    [
-        InlineKeyboardButton(
-            "🎮 دوتا ۲ (توربو)",
-            callback_data="turbo"
-        )
-    ],
-    [
-        InlineKeyboardButton(
-            "🎮 دوتا ۲ (رنک)",
-            callback_data="rank"
-        )
-    ],
-    [
-        InlineKeyboardButton(
-            "📢 همرو صدا کن",
-            callback_data="everyone"
-        )
-    ],
-    [
-        InlineKeyboardButton(
-            "👀 تماشاچی میخوام",
-            callback_data="spectator"
-        )
-    ],
-    [
-        InlineKeyboardButton(
-            "🔴 لینک کال آرمین سرندی",
-            url="https://meet.google.com/gto-izfj-hmj"
-        )
-    ],
-    [
-        InlineKeyboardButton(
-            "🔵 لینک کال علی احدی",
-            url="https://meet.google.com/wba-iyzm-hdu"
-        )
-    ],
-]
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎮 دوتا ۲ (توربو)",
+                callback_data="turbo"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎮 دوتا ۲ (رنک)",
+                callback_data="rank"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📢 همرو صدا کن",
+                callback_data="everyone"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "👀 تماشاگر میخوام",
+                callback_data="spectator"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔴 لینک کال آرمین سرندی",
+                url="https://meet.google.com/gto-izfj-hmj"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔵 لینک کال علی احدی",
+                url="https://meet.google.com/wba-iyzm-hdu"
+            )
+        ],
+    ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
@@ -114,6 +133,10 @@ keyboard = [
         reply_markup=reply_markup
     )
 
+
+# =========================
+# عملکرد دکمه‌ها
+# =========================
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -181,18 +204,25 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# =========================
+# اجرای ربات
+# =========================
+
 def main():
 
     if not TOKEN:
         raise RuntimeError("BOT_TOKEN is missing!")
 
+    # اجرای Flask برای Render
     threading.Thread(
         target=run_web_server,
         daemon=True
     ).start()
 
+    # ساخت ربات
     application = Application.builder().token(TOKEN).build()
 
+    # ثبت کاربران گروه
     application.add_handler(
         MessageHandler(
             filters.ALL & ~filters.COMMAND,
@@ -200,10 +230,12 @@ def main():
         )
     )
 
+    # دستور /start
     application.add_handler(
         CommandHandler("start", start)
     )
 
+    # دکمه‌ها
     application.add_handler(
         CallbackQueryHandler(button_click)
     )
