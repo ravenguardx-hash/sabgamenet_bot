@@ -3,59 +3,41 @@ import json
 import asyncio
 import threading
 import urllib.request
-import urllib.parse
 import urllib.error
 import datetime
-from html import escape
 
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from telegram.ext import (
-    Application,
-    ApplicationBuilder,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# ============================================================
-# صاب گیمنت | Saheb Gimnet
-# Telegram Gaming Group Bot
-# ============================================================
+
+# =========================================================
+# CONFIG
+# =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable is missing.")
+    raise RuntimeError("BOT_TOKEN is not set in Render Environment Variables.")
 
-# ----------------------------
-# Steam / OpenDota IDs
-# ----------------------------
+OPEN_DOTA = "https://api.opendota.com/api"
 
 RAVENGUARD_ACCOUNT_ID = "498590584"
 ARMIN_ACCOUNT_ID = "1524674878"
 
-OPEN_DOTA_BASE = "https://api.opendota.com/api"
-STEAM_NEWS_URL = (
+ARMIN_MEET = "https://meet.google.com/gto-izfj-hmj"
+ALI_MEET = "https://meet.google.com/wba-iyzm-hdu"
+
+STEAM_DOTA_NEWS = (
     "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/"
-    "?appid=570&count=5&maxlength=600&format=json"
+    "?appid=570&count=8&maxlength=800&format=json"
 )
 
-# ----------------------------
-# Google Meet links
-# ----------------------------
 
-ARMIN_MEET_URL = "https://meet.google.com/gto-izfj-hmj"
-ALI_MEET_URL = "https://meet.google.com/wba-iyzm-hdu"
-
-# ----------------------------
-# Known users
-# IDs are learned automatically when users interact with the bot.
-# They are kept in RAM and reset after restart/deploy.
-# ----------------------------
+# =========================================================
+# USERS
+# =========================================================
 
 USERS = {
     "AlieAhadi": None,
@@ -69,9 +51,6 @@ USERS = {
     "Ahmad_b78": None,
 }
 
-# ----------------------------
-# Notification groups
-# ----------------------------
 
 TURBO_USERS = [
     "AlieAhadi",
@@ -107,668 +86,517 @@ SPECTATOR_USERS = [
     "Ahmad_b78",
 ]
 
-# ----------------------------
-# Cache
-# ----------------------------
 
-HERO_MAP_CACHE = None
-HERO_MAP_CACHE_TIME = 0.0
-HERO_MAP_CACHE_TTL = 60 * 60 * 6
+# =========================================================
+# SIMPLE HTTP
+# =========================================================
 
-
-# ============================================================
-# Generic HTTP helpers
-# ============================================================
-
-def http_get_json(url: str, timeout: int = 20):
+def get_json_sync(url):
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Saheb-Gimnet/1.0",
+            "User-Agent": "SahebGimnet/1.0",
             "Accept": "application/json",
         },
     )
 
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        raw = response.read().decode("utf-8")
-        return json.loads(raw)
+    with urllib.request.urlopen(request, timeout=25) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
-def http_post_json(url: str, timeout: int = 20):
-    request = urllib.request.Request(
-        url,
-        data=b"",
-        method="POST",
-        headers={
-            "User-Agent": "Saheb-Gimnet/1.0",
-            "Accept": "application/json",
-        },
-    )
-
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        raw = response.read().decode("utf-8")
-        if not raw.strip():
-            return {}
-        return json.loads(raw)
+async def get_json(url):
+    return await asyncio.to_thread(get_json_sync, url)
 
 
-async def get_json(url: str, timeout: int = 20):
-    return await asyncio.to_thread(http_get_json, url, timeout)
+# =========================================================
+# TELEGRAM USERS
+# =========================================================
 
-
-async def post_json(url: str, timeout: int = 20):
-    return await asyncio.to_thread(http_post_json, url, timeout)
-
-
-# ============================================================
-# Telegram users / mentions
-# ============================================================
-
-def remember_telegram_user(user):
+def remember_user(user):
     if not user:
         return
 
     username = user.username
-    if username and username in USERS:
+
+    if username in USERS:
         USERS[username] = user.id
 
 
-def mention_html(username: str) -> str:
+def mention(username):
     user_id = USERS.get(username)
 
     if user_id:
-        return f'<a href="tg://user?id={user_id}">@{escape(username)}</a>'
+        return f'<a href="tg://user?id={user_id}">@{username}</a>'
 
-    return f"@{escape(username)}"
-
-
-def build_mentions(usernames):
-    return " ".join(mention_html(username) for username in usernames)
+    return f"@{username}"
 
 
-def build_main_keyboard():
-    keyboard = [
+def mentions(usernames):
+    return " ".join(mention(x) for x in usernames)
+
+
+# =========================================================
+# KEYBOARD
+# =========================================================
+
+def keyboard():
+    return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🎮 دوتا ۲ (توربو)", callback_data="turbo"),
-            InlineKeyboardButton("🎮 دوتا ۲ (رنک)", callback_data="ranked"),
+            InlineKeyboardButton(
+                "🎮 دوتا ۲ (توربو)",
+                callback_data="turbo"
+            ),
+            InlineKeyboardButton(
+                "🎮 دوتا ۲ (رنک)",
+                callback_data="ranked"
+            ),
         ],
         [
-            InlineKeyboardButton("📢 همرو صدا کن", callback_data="everyone"),
-            InlineKeyboardButton("👀 تماشاگر میخوام", callback_data="spectator"),
+            InlineKeyboardButton(
+                "📢 همرو صدا کن",
+                callback_data="everyone"
+            ),
+            InlineKeyboardButton(
+                "👀 تماشاگر میخوام",
+                callback_data="spectator"
+            ),
         ],
         [
-            InlineKeyboardButton("🔴 لینک کال آرمین سرندی", url=ARMIN_MEET_URL),
-            InlineKeyboardButton("🔵 لینک کال علی احدی", url=ALI_MEET_URL),
+            InlineKeyboardButton(
+                "🔴 لینک کال آرمین سرندی",
+                url=ARMIN_MEET
+            ),
+            InlineKeyboardButton(
+                "🔵 لینک کال علی احدی",
+                url=ALI_MEET
+            ),
         ],
         [
             InlineKeyboardButton(
                 "📰 چک کردن آپدیت دوتا ۲",
-                callback_data="dota_updates",
+                callback_data="news"
             ),
         ],
         [
             InlineKeyboardButton(
                 "🎮 نتایج اخیر RavenGuard",
-                callback_data="raven_results",
+                callback_data="raven"
             ),
             InlineKeyboardButton(
                 "🎮 نتایج اخیر آرمین",
-                callback_data="armin_results",
+                callback_data="armin"
             ),
         ],
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
 
-# ============================================================
-# /start
-# ============================================================
+# =========================================================
+# START
+# =========================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user:
-        remember_telegram_user(update.effective_user)
-
-    text = (
-        "🎮 <b>صاب گیمنت</b>\n\n"
-        "مدیریت بازی‌های گروه آماده‌ست.\n"
-        "از دکمه‌های زیر استفاده کن:"
-    )
+        remember_user(update.effective_user)
 
     if update.message:
         await update.message.reply_text(
-            text,
+            "🎮🕹 <b>صاب گیمنت</b> 🎲🎱\n\n"
+            "مدیریت بازی‌های گروه آماده‌ست 👇",
             parse_mode=ParseMode.HTML,
-            reply_markup=build_main_keyboard(),
-            disable_web_page_preview=True,
+            reply_markup=keyboard(),
         )
 
 
-async def remember_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user:
-        remember_telegram_user(update.effective_user)
+# =========================================================
+# NOTIFICATIONS
+# =========================================================
 
-
-# ============================================================
-# Notification buttons
-# ============================================================
-
-async def notify_group(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    title: str,
-    usernames,
-):
-    if not update.callback_query or not update.callback_query.message:
-        return
-
+async def send_notification(update, context, title, user_list):
     query = update.callback_query
-    chat_id = query.message.chat_id
 
-    mentions = build_mentions(usernames)
+    if not query or not query.message:
+        return
 
     text = (
         f"{title}\n\n"
-        f"{mentions}\n\n"
-        "🎮 بزن بریم!"
+        f"{mentions(user_list)}\n\n"
+        "🎮 بریم؟"
     )
 
     await context.bot.send_message(
-        chat_id=chat_id,
+        chat_id=query.message.chat_id,
         text=text,
         parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
     )
 
 
-# ============================================================
-# OpenDota
-# ============================================================
+# =========================================================
+# DOTA RECENT MATCHES
+# =========================================================
 
-async def get_recent_matches(account_id: str):
-    url = f"{OPEN_DOTA_BASE}/players/{account_id}/recentMatches"
-    return await get_json(url)
-
-
-async def refresh_player(account_id: str):
-    url = f"{OPEN_DOTA_BASE}/players/{account_id}/refresh"
-    return await post_json(url)
-
-
-async def get_hero_map():
-    global HERO_MAP_CACHE
-    global HERO_MAP_CACHE_TIME
-
-    now = datetime.datetime.now().timestamp()
-
-    if HERO_MAP_CACHE is not None and (now - HERO_MAP_CACHE_TIME) < HERO_MAP_CACHE_TTL:
-        return HERO_MAP_CACHE
-
+def duration(seconds):
     try:
-        url = f"{OPEN_DOTA_BASE}/heroStats"
-        data = await get_json(url)
+        seconds = int(seconds)
+    except Exception:
+        seconds = 0
 
-        hero_map = {}
-
-        if isinstance(data, list):
-            for hero in data:
-                hero_id = hero.get("id")
-                localized_name = hero.get("localized_name")
-
-                if hero_id is not None and localized_name:
-                    hero_map[int(hero_id)] = localized_name
-
-        if hero_map:
-            HERO_MAP_CACHE = hero_map
-            HERO_MAP_CACHE_TIME = now
-
-        return hero_map
-
-    except Exception as exc:
-        print(f"[OpenDota] heroStats failed: {exc}")
-        return HERO_MAP_CACHE or {}
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
-# ============================================================
-# Dota labels / formatting
-# ============================================================
+def date_from_timestamp(timestamp):
+    try:
+        return datetime.datetime.fromtimestamp(
+            int(timestamp)
+        ).strftime("%Y-%m-%d | %H:%M")
+    except Exception:
+        return "نامشخص"
+
+
+def result(match):
+    try:
+        slot = int(match.get("player_slot", 0))
+        radiant = slot < 128
+
+        if match.get("radiant_win") is None:
+            return "❔ نامشخص"
+
+        won = (
+            bool(match["radiant_win"])
+            if radiant
+            else not bool(match["radiant_win"])
+        )
+
+        return "✅ برد" if won else "❌ باخت"
+
+    except Exception:
+        return "❔ نامشخص"
+
 
 GAME_MODES = {
-    0: "نامشخص",
     1: "All Pick",
     2: "Captain's Mode",
     3: "Random Draft",
     4: "Single Draft",
     5: "All Random",
-    6: "Intro",
-    7: "Diretide",
-    8: "Reverse Captain's Mode",
-    9: "Greeviling",
-    10: "Tutorial",
     11: "Mid Only",
     12: "Least Played",
     13: "Limited Heroes",
-    14: "Compendium Match",
-    15: "Custom",
     16: "Captain's Draft",
-    17: "Random Ability",
     18: "All Draft",
     19: "Turbo",
     20: "Mutation",
-    21: "Coach",
     22: "Ranked All Pick",
     23: "Turbo",
-    24: "Ranked",
-    25: "Event",
-    26: "Ability Arena",
-    27: "Universal",
-    28: "Turbo+",
 }
 
 
-def format_duration(seconds):
+async def get_heroes():
     try:
-        seconds = int(seconds or 0)
-    except (TypeError, ValueError):
-        seconds = 0
+        data = await get_json(
+            f"{OPEN_DOTA}/heroStats"
+        )
 
-    minutes = seconds // 60
-    secs = seconds % 60
-    return f"{minutes}:{secs:02d}"
+        if not isinstance(data, list):
+            return {}
+
+        return {
+            int(x["id"]): x.get(
+                "localized_name",
+                f"Hero {x['id']}"
+            )
+            for x in data
+            if x.get("id") is not None
+        }
+
+    except Exception as error:
+        print("heroStats error:", repr(error))
+        return {}
 
 
-def format_match_datetime(timestamp):
-    if not timestamp:
-        return "نامشخص"
+async def get_recent_matches(account_id):
+    # Primary endpoint
+    try:
+        data = await get_json(
+            f"{OPEN_DOTA}/players/{account_id}/recentMatches"
+        )
+
+        if isinstance(data, list) and data:
+            return data
+
+    except Exception as error:
+        print(
+            f"recentMatches error for {account_id}:",
+            repr(error)
+        )
+
+    # Fallback endpoint
+    try:
+        data = await get_json(
+            f"{OPEN_DOTA}/players/{account_id}/matches?limit=5"
+        )
+
+        if isinstance(data, list) and data:
+            return data
+
+    except Exception as error:
+        print(
+            f"matches fallback error for {account_id}:",
+            repr(error)
+        )
+
+    return []
+
+
+def match_text(match, heroes):
+    hero_id = match.get("hero_id")
 
     try:
-        dt = datetime.datetime.fromtimestamp(int(timestamp))
-        return dt.strftime("%Y-%m-%d | %H:%M")
-    except (TypeError, ValueError, OverflowError, OSError):
-        return "نامشخص"
+        hero_id = int(hero_id)
+    except Exception:
+        hero_id = 0
 
+    hero = heroes.get(
+        hero_id,
+        f"Hero ID {hero_id}"
+    )
 
-def result_for_player(match):
-    player_slot = int(match.get("player_slot", 0) or 0)
-    radiant = player_slot < 128
-    radiant_win = match.get("radiant_win")
-
-    if radiant_win is None:
-        return "❔"
-
-    won = bool(radiant_win) if radiant else not bool(radiant_win)
-    return "✅ برد" if won else "❌ باخت"
-
-
-def game_mode_label(match):
     mode_id = match.get("game_mode")
+
     try:
         mode_id = int(mode_id)
-    except (TypeError, ValueError):
+    except Exception:
         mode_id = 0
 
-    mode = GAME_MODES.get(mode_id, f"Mode {mode_id}")
+    mode = GAME_MODES.get(
+        mode_id,
+        f"Mode {mode_id}"
+    )
 
-    lobby_type = match.get("lobby_type")
-    try:
-        lobby_type = int(lobby_type)
-    except (TypeError, ValueError):
-        lobby_type = None
+    match_id = match.get("match_id", "?")
 
-    if lobby_type == 7 and mode not in ("Turbo", "Turbo+"):
-        return f"{mode} | Ranked"
+    kills = match.get("kills", 0)
+    deaths = match.get("deaths", 0)
+    assists = match.get("assists", 0)
 
-    return mode
+    gpm = match.get("gold_per_min", 0)
+    xpm = match.get("xp_per_min", 0)
 
+    last_hits = match.get("last_hits", 0)
+    hero_damage = match.get("hero_damage", 0)
+    tower_damage = match.get("tower_damage", 0)
 
-def safe_number(value, default=0):
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return default
-
-
-def build_match_text(match, hero_map):
-    match_id = match.get("match_id", "Unknown")
-    hero_id = match.get("hero_id")
-    hero_name = hero_map.get(int(hero_id), f"Hero ID {hero_id}") if hero_id else "نامشخص"
-
-    result = result_for_player(match)
-    duration = format_duration(match.get("duration"))
-    mode = game_mode_label(match)
-    date_time = format_match_datetime(match.get("start_time"))
-
-    kills = safe_number(match.get("kills"))
-    deaths = safe_number(match.get("deaths"))
-    assists = safe_number(match.get("assists"))
-
-    gpm = safe_number(match.get("gold_per_min"))
-    xpm = safe_number(match.get("xp_per_min"))
-    last_hits = safe_number(match.get("last_hits"))
-    hero_damage = safe_number(match.get("hero_damage"))
-    tower_damage = safe_number(match.get("tower_damage"))
-
-    details = (
-        f"<b>{result}</b>\n"
-        f"🦸 هیرو: <b>{escape(str(hero_name))}</b>\n"
-        f"🎯 مود: {escape(str(mode))}\n"
-        f"⏱ مدت: {duration}\n"
-        f"🕒 تاریخ: {date_time}\n"
+    return (
+        f"{result(match)}\n"
+        f"🦸 هیرو: <b>{hero}</b>\n"
+        f"🎯 مود: {mode}\n"
+        f"⏱ مدت: {duration(match.get('duration', 0))}\n"
+        f"🕒 تاریخ: {date_from_timestamp(match.get('start_time'))}\n"
         f"⚔️ K/D/A: <b>{kills}/{deaths}/{assists}</b>\n"
         f"💰 GPM: {gpm} | ⭐ XPM: {xpm}\n"
         f"🎯 Last Hits: {last_hits}\n"
         f"💥 Hero Damage: {hero_damage}\n"
         f"🏰 Tower Damage: {tower_damage}\n"
-        f"🔎 <a href=\"https://www.opendota.com/matches/{match_id}\">جزئیات کامل بازی</a>"
+        f'🔎 <a href="https://www.opendota.com/matches/{match_id}">جزئیات بازی</a>'
     )
 
-    return details
 
+async def show_recent(update, account_id, name):
+    query = update.callback_query
 
-async def get_matches_with_retry(account_id: str):
-    # First attempt
-    try:
-        data = await get_recent_matches(account_id)
-
-        if isinstance(data, list) and data:
-            return data, None
-
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            return None, "rate_limit"
-        print(f"[OpenDota] recentMatches HTTP error: {exc}")
-    except urllib.error.URLError as exc:
-        print(f"[OpenDota] recentMatches URL error: {exc}")
-    except Exception as exc:
-        print(f"[OpenDota] recentMatches error: {exc}")
-
-    # Refresh OpenDota cache once
-    try:
-        await refresh_player(account_id)
-    except urllib.error.HTTPError as exc:
-        print(f"[OpenDota] refresh HTTP error: {exc}")
-    except urllib.error.URLError as exc:
-        print(f"[OpenDota] refresh URL error: {exc}")
-    except Exception as exc:
-        print(f"[OpenDota] refresh error: {exc}")
-
-    await asyncio.sleep(2)
-
-    # Second attempt
-    try:
-        data = await get_recent_matches(account_id)
-
-        if isinstance(data, list) and data:
-            return data, None
-
-        return [], "empty"
-
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            return None, "rate_limit"
-        print(f"[OpenDota] second recentMatches HTTP error: {exc}")
-        return None, "http"
-    except urllib.error.URLError as exc:
-        print(f"[OpenDota] second recentMatches URL error: {exc}")
-        return None, "network"
-    except Exception as exc:
-        print(f"[OpenDota] second recentMatches error: {exc}")
-        return None, "unknown"
-
-
-async def show_player_results(
-    update: Update,
-    account_id: str,
-    display_name: str,
-):
-    if not update.callback_query or not update.callback_query.message:
+    if not query or not query.message:
         return
 
-    query = update.callback_query
-    message = query.message
-
-    waiting_text = (
-        f"🎮 <b>در حال گرفتن ۵ بازی اخیر {escape(display_name)}...</b>\n\n"
-        "⏳ یک لحظه صبر کن..."
-    )
-
-    await message.reply_text(
-        waiting_text,
+    await query.message.reply_text(
+        f"🎮 <b>در حال گرفتن بازی‌های اخیر {name}...</b>\n"
+        "⏳ یک لحظه صبر کن...",
         parse_mode=ParseMode.HTML,
     )
 
-    matches, status = await get_matches_with_retry(account_id)
-
-    if status == "rate_limit":
-        await message.reply_text(
-            "⚠️ OpenDota فعلاً درخواست‌های زیادی دریافت کرده.\n"
-            "چند لحظه بعد دوباره همین دکمه را بزن.",
-        )
-        return
-
-    if matches is None:
-        await message.reply_text(
-            "❌ ارتباط با OpenDota برقرار نشد.\n"
-            "این خطا از سرویس آمار بازی است، نه از منوی ربات.",
-        )
-        return
+    matches = await get_recent_matches(account_id)
 
     if not matches:
-        await message.reply_text(
-            f"❌ اطلاعاتی از بازی‌های اخیر <b>{escape(display_name)}</b> پیدا نشد.\n\n"
-            "ممکن است OpenDota هنوز اطلاعات حساب را به‌روزرسانی نکرده باشد.",
-            parse_mode=ParseMode.HTML,
+        await query.message.reply_text(
+            f"❌ اطلاعاتی از بازی‌های اخیر {name} پیدا نشد.\n\n"
+            "ممکن است OpenDota فعلاً اطلاعات این بازیکن را در دسترس نداشته باشد.",
         )
         return
 
-    # Sort newest first and keep exactly 5
     matches = sorted(
         matches,
-        key=lambda item: safe_number(item.get("start_time")),
+        key=lambda x: int(x.get("start_time", 0) or 0),
         reverse=True,
     )[:5]
 
-    hero_map = await get_hero_map()
+    heroes = await get_heroes()
 
-    parts = [
-        f"🎮 <b>۵ بازی اخیر {escape(display_name)}</b>",
+    output = [
+        f"🎮 <b>۵ بازی اخیر {name}</b>",
         "",
     ]
 
-    for index, match in enumerate(matches, start=1):
-        parts.append(f"<b>━━ بازی {index} ━━</b>")
-        parts.append(build_match_text(match, hero_map))
-        parts.append("")
+    for i, match in enumerate(matches, 1):
+        output.append(f"<b>━━━━ بازی {i} ━━━━</b>")
+        output.append(match_text(match, heroes))
+        output.append("")
 
-    result_text = "\n".join(parts)
-
-    await message.reply_text(
-        result_text,
+    await query.message.reply_text(
+        "\n".join(output),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
 
 
-# ============================================================
-# RavenGuard / Armin callbacks
-# ============================================================
+# =========================================================
+# DOTA NEWS
+# =========================================================
 
-async def handle_raven_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await show_player_results(
-        update,
-        RAVENGUARD_ACCOUNT_ID,
-        "RavenGuard",
-    )
+async def dota_news(update):
+    query = update.callback_query
 
-
-async def handle_armin_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await show_player_results(
-        update,
-        ARMIN_ACCOUNT_ID,
-        "آرمین",
-    )
-
-
-# ============================================================
-# Dota 2 news / updates
-# ============================================================
-
-async def get_dota_news():
-    data = await get_json(STEAM_NEWS_URL)
-
-    appnews = data.get("appnews", {})
-    news_items = appnews.get("newsitems", {}).get("newsitem", [])
-
-    if not isinstance(news_items, list):
-        news_items = []
-
-    return news_items
-
-
-async def handle_dota_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query or not update.callback_query.message:
+    if not query or not query.message:
         return
-
-    message = update.callback_query.message
 
     try:
-        news = await get_dota_news()
-    except urllib.error.HTTPError as exc:
-        await message.reply_text(
-            f"❌ سرویس اخبار استیم خطای HTTP {exc.code} برگرداند."
+        data = await get_json(STEAM_DOTA_NEWS)
+
+        items = (
+            data
+            .get("appnews", {})
+            .get("newsitems", {})
+            .get("newsitem", [])
         )
-        return
-    except urllib.error.URLError:
-        await message.reply_text(
-            "❌ فعلاً به سرویس اخبار استیم دسترسی ندارم."
+
+        if not isinstance(items, list):
+            items = []
+
+        if not items:
+            await query.message.reply_text(
+                "📰 فعلاً آپدیت یا خبر جدیدی از دوتا ۲ پیدا نشد."
+            )
+            return
+
+        lines = [
+            "📰 <b>آخرین اخبار دوتا ۲</b>",
+            "",
+        ]
+
+        for item in items[:5]:
+            title = item.get(
+                "title",
+                "بدون عنوان"
+            )
+
+            url = item.get("url")
+
+            if url:
+                lines.append(
+                    f'• <a href="{url}">{title}</a>'
+                )
+            else:
+                lines.append(f"• {title}")
+
+        await query.message.reply_text(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
         )
-        return
-    except Exception as exc:
-        print(f"[Steam News] error: {exc}")
-        await message.reply_text(
-            "❌ هنگام گرفتن آپدیت‌های دوتا ۲ خطایی رخ داد."
+
+    except Exception as error:
+        print(
+            "Steam Dota news error:",
+            repr(error)
         )
-        return
 
-    if not news:
-        await message.reply_text(
-            "📰 فعلاً خبر جدیدی از دوتا ۲ پیدا نشد."
+        await query.message.reply_text(
+            "❌ سرویس اخبار دوتا ۲ فعلاً پاسخ نمی‌دهد.\n"
+            "خود ربات سالم است."
         )
-        return
-
-    lines = ["📰 <b>آخرین اخبار دوتا ۲</b>", ""]
-
-    for item in news[:5]:
-        title = escape(item.get("title", "بدون عنوان"))
-        url = item.get("url", "")
-
-        if url:
-            lines.append(f'• <a href="{escape(url)}">{title}</a>')
-        else:
-            lines.append(f"• {title}")
-
-    await message.reply_text(
-        "\n".join(lines),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
 
 
-# ============================================================
-# Callback handler
-# ============================================================
+# =========================================================
+# CALLBACKS
+# =========================================================
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     if not query:
         return
 
-    if query.from_user:
-        remember_telegram_user(query.from_user)
+    remember_user(query.from_user)
 
-    # Telegram shows a loading state until answer() is called.
     await query.answer()
 
-    data = query.data or ""
-
-    if data == "turbo":
-        await notify_group(
+    if query.data == "turbo":
+        await send_notification(
             update,
             context,
             "🎮 <b>دوتا ۲ توربو</b>",
             TURBO_USERS,
         )
-        return
 
-    if data == "ranked":
-        await notify_group(
+    elif query.data == "ranked":
+        await send_notification(
             update,
             context,
             "🎮 <b>دوتا ۲ رنک</b>",
             RANKED_USERS,
         )
-        return
 
-    if data == "everyone":
-        await notify_group(
+    elif query.data == "everyone":
+        await send_notification(
             update,
             context,
             "📢 <b>همه جمع بشید!</b>",
             EVERYONE_USERS,
         )
-        return
 
-    if data == "spectator":
-        await notify_group(
+    elif query.data == "spectator":
+        await send_notification(
             update,
             context,
-            "👀 <b>تماشاگر لازم دارم!</b>",
+            "👀 <b>تماشاگر میخوام!</b>",
             SPECTATOR_USERS,
         )
-        return
 
-    if data == "dota_updates":
-        await handle_dota_updates(update, context)
-        return
+    elif query.data == "raven":
+        await show_recent(
+            update,
+            RAVENGUARD_ACCOUNT_ID,
+            "RavenGuard",
+        )
 
-    if data == "raven_results":
-        await handle_raven_results(update, context)
-        return
+    elif query.data == "armin":
+        await show_recent(
+            update,
+            ARMIN_ACCOUNT_ID,
+            "آرمین",
+        )
 
-    if data == "armin_results":
-        await handle_armin_results(update, context)
-        return
-
-
-# ============================================================
-# Telegram error handler
-# ============================================================
-
-async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print("[Telegram] Unhandled error:")
-    print(repr(context.error))
+    elif query.data == "news":
+        await dota_news(update)
 
 
-# ============================================================
-# Flask server for Render
-# ============================================================
+# =========================================================
+# FLASK FOR RENDER
+# =========================================================
 
 flask_app = Flask(__name__)
 
 
-@flask_app.get("/")
+@flask_app.route("/")
 def home():
-    return "Saheb Gimnet bot is running."
+    return "Saheb Gimnet is running."
 
 
-@flask_app.get("/health")
+@flask_app.route("/health")
 def health():
-    return {"status": "ok"}
+    return "OK"
 
 
 def run_flask():
     port = int(os.getenv("PORT", "10000"))
+
     flask_app.run(
         host="0.0.0.0",
         port=port,
@@ -777,35 +605,38 @@ def run_flask():
     )
 
 
-# ============================================================
-# Main
-# ============================================================
+# =========================================================
+# MAIN
+# =========================================================
 
 def main():
-    flask_thread = threading.Thread(
+    threading.Thread(
         target=run_flask,
         daemon=True,
-    )
-    flask_thread.start()
+    ).start()
 
-    application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", start))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(
-        MessageHandler(
-            filters.ALL,
-            remember_user_message,
-        )
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
     )
 
-    application.add_error_handler(telegram_error_handler)
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("help", start)
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(callbacks)
+    )
 
     print("Saheb Gimnet bot started successfully.")
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES,
+
+    app.run_polling(
+        drop_pending_updates=True
     )
 
 
