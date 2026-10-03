@@ -16,6 +16,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 RAVENGUARD_ACCOUNT_ID = "997181168"
+ARMIN_ACCOUNT_ID = "1524674878"
 
 MEET_ARMIN = "https://meet.google.com/gto-izfj-hmj"
 MEET_ALI = "https://meet.google.com/wba-iyzm-hdu"
@@ -303,6 +304,12 @@ def get_main_keyboard():
                 "🎮 نتایج اخیر RavenGuard",
                 callback_data="raven_results"
             )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎮 نتایج اخیر Armin",
+                callback_data="armin_results"
+            )
         ]
     ]
 
@@ -461,30 +468,23 @@ def get_hero_map():
     return result
 
 
-def get_recent_matches():
-    # OpenDota's /matches endpoint is more reliable for fetching
-    # the player's latest indexed matches than /recentMatches.
+def get_recent_matches(account_id):
     url = (
         "https://api.opendota.com/api/players/"
-        + RAVENGUARD_ACCOUNT_ID
+        + account_id
         + "/matches?limit=5"
     )
 
-    data = get_json(
+    return get_json(
         url,
         30
     )
 
-    if isinstance(data, list):
-        return data
 
-    return []
-
-
-def request_raven_refresh():
+def request_account_refresh(account_id):
     url = (
         "https://api.opendota.com/api/players/"
-        + RAVENGUARD_ACCOUNT_ID
+        + account_id
         + "/refresh"
     )
 
@@ -508,7 +508,7 @@ def request_raven_refresh():
 
     except Exception as error:
         print(
-            "RavenGuard refresh error:",
+            "Account refresh error:",
             error
         )
 
@@ -707,9 +707,9 @@ def build_match_text(match, hero_map):
     return text
 
 
-async def handle_raven_results(query):
+async def handle_recent_results(query, account_id, player_name):
     loading = await query.message.reply_text(
-        "🎮 <b>در حال گرفتن ۵ بازی اخیر RavenGuard...</b>\n"
+        "🎮 <b>در حال گرفتن ۵ بازی اخیر " + escape(player_name) + "...</b>\\n"
         "⏳ یک لحظه صبر کن...",
         parse_mode="HTML"
     )
@@ -720,89 +720,92 @@ async def handle_raven_results(query):
         )
 
         matches = await asyncio.to_thread(
-            get_recent_matches
+            get_recent_matches,
+            account_id
         )
 
         if not matches:
             await loading.edit_text(
-                "🔄 بازی‌های RavenGuard هنوز در OpenDota پیدا نشد.\n"
+                "🔄 بازی‌های " + escape(player_name) + " هنوز در OpenDota پیدا نشد.\\n"
                 "⏳ دارم اطلاعات پروفایل را Refresh می‌کنم...",
                 parse_mode="HTML"
             )
 
             await asyncio.to_thread(
-                request_raven_refresh
+                request_account_refresh,
+                account_id
             )
 
-            await asyncio.sleep(
-                7
-            )
+            await asyncio.sleep(7)
 
             matches = await asyncio.to_thread(
-                get_recent_matches
+                get_recent_matches,
+                account_id
             )
 
         if not matches:
             await loading.edit_text(
-                "❌ هنوز بازی‌های اخیر RavenGuard پیدا نشد.\n\n"
-                "OpenDota هنوز اطلاعات این اکانت را ندارد.\n"
+                "❌ هنوز بازی‌های اخیر " + escape(player_name) + " پیدا نشد.\\n\\n"
+                "OpenDota هنوز اطلاعات این اکانت را ندارد.\\n"
                 "چند دقیقه بعد دوباره روی همین دکمه بزن.",
                 parse_mode="HTML"
             )
-
             return
 
         await loading.edit_text(
-            "🎮 <b>۵ بازی اخیر RavenGuard</b>\n\n"
+            "🎮 <b>۵ بازی اخیر " + escape(player_name) + "</b>\\n\\n"
             "━━━━━━━━━━━━━━━━━━━━",
             parse_mode="HTML"
         )
 
-        for index, match in enumerate(
-            matches[:5],
-            1
-        ):
+        for index, match in enumerate(matches[:5], 1):
             try:
-                text = build_match_text(
-                    match,
-                    hero_map
-                )
+                match_text = build_match_text(match, hero_map)
 
                 await query.message.reply_text(
-                    "🎮 <b>Match #"
-                    + str(index)
-                    + "</b>\n\n"
-                    + text,
+                    "🎮 <b>Match #" + str(index) + "</b>\\n\\n" + match_text,
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
 
             except Exception as error:
                 print(
-                    "RavenGuard match error:",
+                    player_name + " match error:",
                     error
                 )
 
                 await query.message.reply_text(
-                    "⚠️ خطا در نمایش Match #"
-                    + str(index)
-                    + "\n"
-                    + escape(str(error)),
+                    "⚠️ خطا در نمایش Match #" + str(index) + "\\n" + escape(str(error)),
                     parse_mode="HTML"
                 )
 
     except Exception as error:
         print(
-            "RavenGuard error:",
+            player_name + " error:",
             error
         )
 
         await loading.edit_text(
-            "❌ خطا هنگام دریافت بازی‌های RavenGuard.\n\n"
-            "خطا:\n"
-            + escape(str(error)),
+            "❌ خطا هنگام دریافت بازی‌های " + escape(player_name) + ".\\n\\n"
+            "خطا:\\n" + escape(str(error)),
             parse_mode="HTML"
         )
+
+
+async def handle_raven_results(query):
+    await handle_recent_results(
+        query,
+        RAVENGUARD_ACCOUNT_ID,
+        "RavenGuard"
+    )
+
+
+async def handle_armin_results(query):
+    await handle_recent_results(
+        query,
+        ARMIN_ACCOUNT_ID,
+        "Armin"
+    )
 
 
 def get_latest_gameplay_patch():
@@ -1137,6 +1140,11 @@ async def button_handler(
 
     elif query.data == "raven_results":
         await handle_raven_results(
+            query
+        )
+
+    elif query.data == "armin_results":
+        await handle_armin_results(
             query
         )
 
