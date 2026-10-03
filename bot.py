@@ -468,7 +468,16 @@ def get_hero_map():
     return result
 
 
-def get_recent_matches(account_id):
+def steam64_to_account_id(steam_id64):
+    try:
+        return str(int(steam_id64) - 76561197960265728)
+    except Exception:
+        raise ValueError("SteamID64 نامعتبر است.")
+
+
+def get_recent_matches(steam_id64):
+    account_id = steam64_to_account_id(steam_id64)
+
     url = (
         "https://api.opendota.com/api/players/"
         + account_id
@@ -481,7 +490,9 @@ def get_recent_matches(account_id):
     )
 
 
-def request_account_refresh(account_id):
+def request_account_refresh(steam_id64):
+    account_id = steam64_to_account_id(steam_id64)
+
     url = (
         "https://api.opendota.com/api/players/"
         + account_id
@@ -707,7 +718,7 @@ def build_match_text(match, hero_map):
     return text
 
 
-async def handle_recent_results(query, account_id, player_name):
+async def handle_recent_results(query, steam_id64, player_name):
     loading = await query.message.reply_text(
         "🎮 <b>در حال گرفتن ۵ بازی اخیر " + escape(player_name) + "...</b>\\n"
         "⏳ یک لحظه صبر کن...",
@@ -721,7 +732,7 @@ async def handle_recent_results(query, account_id, player_name):
 
         matches = await asyncio.to_thread(
             get_recent_matches,
-            account_id
+            steam_id64
         )
 
         if not matches:
@@ -733,14 +744,14 @@ async def handle_recent_results(query, account_id, player_name):
 
             await asyncio.to_thread(
                 request_account_refresh,
-                account_id
+                steam_id64
             )
 
             await asyncio.sleep(7)
 
             matches = await asyncio.to_thread(
                 get_recent_matches,
-                account_id
+                steam_id64
             )
 
         if not matches:
@@ -795,7 +806,7 @@ async def handle_recent_results(query, account_id, player_name):
 async def handle_raven_results(query):
     await handle_recent_results(
         query,
-        RAVENGUARD_ACCOUNT_ID,
+        RAVENGUARD_STEAM_ID64,
         "RavenGuard"
     )
 
@@ -803,7 +814,7 @@ async def handle_raven_results(query):
 async def handle_armin_results(query):
     await handle_recent_results(
         query,
-        ARMIN_ACCOUNT_ID,
+        ARMIN_STEAM_ID64,
         "Armin"
     )
 
