@@ -453,13 +453,25 @@ def get_recent_matches(steam_id64):
 
     # 20 تا می‌گیریم و بعد جدیدترین 5 تا را خودمان انتخاب می‌کنیم.
     # هیچ فیلتری روی Game Mode نداریم؛ بنابراین Turbo هم حتماً داخل نتایج می‌ماند.
+    # مهم: OpenDota به طور پیش‌فرض significant=1 دارد و بازی‌های
+    # غیر استاندارد مثل Turbo را حذف می‌کند.
+    # با significant=0 بازی‌های Turbo هم برمی‌گردند.
     url = (
         "https://api.opendota.com/api/players/"
         + account_id
-        + "/matches?limit=20"
+        + "/matches?limit=50&significant=0"
     )
 
     matches = get_json(url, 30)
+
+    # اگر تاریخچه هنوز در OpenDota ثبت نشده بود، یک بار Refresh می‌کنیم.
+    if not matches:
+        request_account_refresh(steam_id64)
+
+        try:
+            matches = get_json(url, 30)
+        except Exception:
+            matches = []
 
     if not isinstance(matches, list):
         return []
