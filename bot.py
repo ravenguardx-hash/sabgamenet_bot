@@ -15,8 +15,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-RAVENGUARD_ACCOUNT_ID = "[U:1:997181168]"
-ARMIN_ACCOUNT_ID = "[U:1:1524674878]"
+RAVENGUARD_ACCOUNT_ID = "498590584"
+ARMIN_ACCOUNT_ID = "762337439"
 
 MEET_ARMIN = "https://meet.google.com/gto-izfj-hmj"
 MEET_ALI = "https://meet.google.com/wba-iyzm-hdu"
