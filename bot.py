@@ -462,16 +462,23 @@ def get_hero_map():
 
 
 def get_recent_matches():
+    # OpenDota's /matches endpoint is more reliable for fetching
+    # the player's latest indexed matches than /recentMatches.
     url = (
         "https://api.opendota.com/api/players/"
         + RAVENGUARD_ACCOUNT_ID
-        + "/recentMatches"
+        + "/matches?limit=5"
     )
 
-    return get_json(
+    data = get_json(
         url,
         30
     )
+
+    if isinstance(data, list):
+        return data
+
+    return []
 
 
 def request_raven_refresh():
